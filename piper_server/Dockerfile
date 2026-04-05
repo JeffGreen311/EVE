@@ -59,10 +59,10 @@ COPY piper_server/index.html .
 ENV PIPER_BIN=/app/piper/piper
 ENV PIPER_MODELS_DIR=/app/piper/models
 ENV PIPER_DEFAULT_VOICE=en_US-lessac-medium
-ENV WHISPER_MODEL=tiny
+ENV WHISPER_MODEL=small
 
-# Pre-download Whisper model at build time (tiny = 75MB vs base = 150MB)
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+# Pre-download Whisper model at build time (small = 500MB, much better accuracy)
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
 
 EXPOSE 5050
 
