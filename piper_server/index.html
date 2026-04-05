@@ -414,6 +414,19 @@ async function chatWithEve(text) {
   return fullText;
 }
 
+// ── Audio Context (unlock iOS audio on first user tap) ──────────────────────
+let _audioCtxUnlocked = false;
+const _audioEl = new Audio();
+_audioEl.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+
+function unlockAudio() {
+  if (_audioCtxUnlocked) return;
+  _audioEl.play().then(() => { _audioCtxUnlocked = true; }).catch(() => {});
+}
+// Unlock on any user interaction
+document.addEventListener('touchstart', unlockAudio, { once: false });
+document.addEventListener('mousedown', unlockAudio, { once: false });
+
 // ── TTS (Piper on server) ────────────────────────────────────────────────────
 async function speak(text) {
   const params = new URLSearchParams({ text, voice: 'en_US-lessac-medium' });
@@ -421,11 +434,13 @@ async function speak(text) {
   if (!res.ok) throw new Error('TTS error: ' + res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
+
+  // Reuse the pre-unlocked audio element for iOS
   return new Promise((resolve, reject) => {
-    const audio = new Audio(url);
-    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
-    audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Audio playback failed')); };
-    audio.play().catch(reject);
+    _audioEl.onended = () => { URL.revokeObjectURL(url); _audioEl.onended = null; _audioEl.onerror = null; resolve(); };
+    _audioEl.onerror = () => { URL.revokeObjectURL(url); _audioEl.onended = null; _audioEl.onerror = null; reject(new Error('Audio playback failed')); };
+    _audioEl.src = url;
+    _audioEl.play().catch(reject);
   });
 }
 
@@ -464,10 +479,16 @@ async function onPressOut() {
 
     // TTS + typewriter in parallel
     transitionTo('speaking', 'eve is speaking...');
-    await Promise.all([
-      typewrite(eveBubble, response, 16),
-      speak(response),
-    ]);
+    try {
+      await Promise.all([
+        typewrite(eveBubble, response, 16),
+        speak(response),
+      ]);
+    } catch (ttsErr) {
+      console.warn('TTS failed:', ttsErr);
+      // Still show text even if audio fails
+      eveBubble.textContent = response;
+    }
 
     transitionTo('idle', 'hold to speak');
   } catch (e) {
