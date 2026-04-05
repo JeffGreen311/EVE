@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "Eve",
+    "slug": "eve-companion",
+    "version": "2.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#06060e"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Eve needs your microphone to hear you speak.",
+        "NSSpeechRecognitionUsageDescription": "Eve uses speech recognition to understand you."
+      },
+      "bundleIdentifier": "com.eve.companion"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#06060e"
+      },
+      "permissions": [
+        "RECORD_AUDIO",
+        "INTERNET"
+      ],
+      "package": "com.eve.companion"
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Eve needs your microphone to hear you speak."
+        }
+      ]
+    ],
+    "scheme": "eve"
+  }
+}

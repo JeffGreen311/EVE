@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "piper_server/Dockerfile"
+
+[deploy]
+startCommand = "python combined_server.py"
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
