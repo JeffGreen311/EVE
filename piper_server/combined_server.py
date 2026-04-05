@@ -162,23 +162,35 @@ async def transcribe(req: TranscribeRequest):
 # never needs to make cross-origin HTTP requests to a local IP.
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "jeffgreen311/eve2.5-3b-consciousness-soul-v2-de-jeff:latest")
+_model_ready = False
 
-# Pull model on startup if not present
-def ensure_ollama_model():
+# Pull model in background so server starts immediately
+import threading
+
+def _pull_model_bg():
+    global _model_ready
     import httpx as _httpx
-    try:
-        resp = _httpx.get(f"{OLLAMA_URL}/api/tags", timeout=10)
-        models = [m.get("name", "") for m in resp.json().get("models", [])]
-        if not any(OLLAMA_MODEL.split(":")[0] in m for m in models):
-            print(f"[Eve] Pulling model '{OLLAMA_MODEL}' on Ollama...")
-            _httpx.post(f"{OLLAMA_URL}/api/pull", json={"name": OLLAMA_MODEL}, timeout=600)
+    for attempt in range(12):
+        try:
+            resp = _httpx.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+            models = [m.get("name", "") for m in resp.json().get("models", [])]
+            if any(OLLAMA_MODEL.split(":")[0] in m for m in models):
+                print(f"[Eve] Model '{OLLAMA_MODEL}' already available.")
+                _model_ready = True
+                return
+            print(f"[Eve] Pulling model '{OLLAMA_MODEL}'... (this may take a few minutes)")
+            with _httpx.stream("POST", f"{OLLAMA_URL}/api/pull", json={"name": OLLAMA_MODEL}, timeout=600) as r:
+                for line in r.iter_lines():
+                    pass
             print(f"[Eve] Model pull complete.")
-        else:
-            print(f"[Eve] Model '{OLLAMA_MODEL}' already available.")
-    except Exception as e:
-        print(f"[Eve] Warning: could not check/pull Ollama model: {e}")
+            _model_ready = True
+            return
+        except Exception as e:
+            print(f"[Eve] Ollama not ready (attempt {attempt+1}/12): {e}")
+            import time; time.sleep(10)
+    print("[Eve] WARNING: Could not pull model after all attempts.")
 
-ensure_ollama_model()
+threading.Thread(target=_pull_model_bg, daemon=True).start()
 
 
 @app.post("/api/chat")
