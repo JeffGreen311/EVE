@@ -1,6 +1,7 @@
-# Eve Voice Server — Railway Dockerfile
-# Piper TTS + Whisper STT in one container
+# Eve Voice Server — Railway Dockerfile v3
+# Piper TTS + Whisper STT + Ollama proxy in one container
 # Multi-stage build to keep image small
+# Cache bust: 2026-04-05
 
 # ── Stage 1: Build ────────────────────────────────────────────────────────────
 FROM python:3.11-slim AS builder
