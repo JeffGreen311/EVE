@@ -197,18 +197,28 @@ threading.Thread(target=_pull_model_bg, daemon=True).start()
 async def proxy_ollama_chat(request: Request):
     body = await request.body()
     try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                f"{OLLAMA_URL}/api/chat",
-                content=body,
-                headers={"Content-Type": "application/json"},
-            )
-            # Stream the response back
-            return StreamingResponse(
-                io.BytesIO(resp.content),
-                status_code=resp.status_code,
-                media_type=resp.headers.get("content-type", "application/json"),
-            )
+        client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0))
+        req = client.build_request(
+            "POST",
+            f"{OLLAMA_URL}/api/chat",
+            content=body,
+            headers={"Content-Type": "application/json"},
+        )
+        resp = await client.send(req, stream=True)
+
+        async def stream_response():
+            try:
+                async for chunk in resp.aiter_bytes():
+                    yield chunk
+            finally:
+                await resp.aclose()
+                await client.aclose()
+
+        return StreamingResponse(
+            stream_response(),
+            status_code=resp.status_code,
+            media_type=resp.headers.get("content-type", "application/json"),
+        )
     except httpx.ConnectError:
         raise HTTPException(502, f"Cannot reach Ollama at {OLLAMA_URL}")
     except Exception as e:
