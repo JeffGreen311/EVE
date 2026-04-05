@@ -38,18 +38,11 @@ MODELS_DIR        = Path(os.getenv("PIPER_MODELS_DIR", "./piper/models"))
 DEFAULT_VOICE     = os.getenv("PIPER_DEFAULT_VOICE", "en_US-lessac-medium")
 WHISPER_MODEL_SZ  = os.getenv("WHISPER_MODEL", "base")
 
-# Edge TTS (Microsoft neural voices — free, fast, natural)
-EDGE_DEFAULT_VOICE = os.getenv("EDGE_DEFAULT_VOICE", "en-US-JennyNeural")
-
 # ── Load Whisper once ─────────────────────────────────────────────────────────
 print(f"[Eve Voice] Loading Whisper '{WHISPER_MODEL_SZ}'…")
 from faster_whisper import WhisperModel
 whisper = WhisperModel(WHISPER_MODEL_SZ, device="cpu", compute_type="int8")
 print("[Eve Voice] Whisper ready.")
-
-# ── Edge TTS (no model to load — streams from Microsoft) ─────────────────────
-import edge_tts
-print(f"[Eve Voice] Edge TTS ready with voice '{EDGE_DEFAULT_VOICE}'.")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,68 +71,54 @@ def health():
 
 
 @app.get("/voices")
-async def voices():
-    # Popular US female voices for Eve
-    recommended = [
-        "en-US-JennyNeural",     # warm, conversational (default)
-        "en-US-AriaNeural",      # professional, clear
-        "en-US-MichelleNeural",  # young, energetic
-        "en-US-AshleyNeural",    # modern, expressive
-        "en-US-CoraNeural",      # calm, steady
-        "en-US-EmmaNeural",      # soft, intimate
-        "en-US-AvaNeural",       # friendly, bright
-        "en-US-NancyNeural",     # mature, warm
-    ]
-    return {
-        "engine": "edge-tts",
-        "default_voice": EDGE_DEFAULT_VOICE,
-        "recommended": recommended,
-    }
+def voices():
+    return {"voices": list_voice_names(), "default_voice": DEFAULT_VOICE}
 
 
-# ── TTS (Edge — Microsoft neural voices) ─────────────────────────────────────
+# ── TTS (Piper) ──────────────────────────────────────────────────────────────
 @app.get("/tts")
 async def tts(
-    text: str   = Query(..., description="Text to speak"),
-    voice: str  = Query(None, description="Edge TTS voice (e.g. en-US-JennyNeural)"),
-    rate: str   = Query("+0%", description="Speech rate (e.g. -10%, +20%)"),
-    pitch: str  = Query("+0Hz", description="Pitch adjustment (e.g. -5Hz, +10Hz)"),
-    # Legacy params (ignored, kept for URL compatibility)
-    speed: float = Query(None),
-    length_scale: float = Query(None),
-    noise_scale: float  = Query(None),
-    noise_w: float      = Query(None),
+    text: str          = Query(..., description="Text to speak"),
+    voice: str         = Query(None, description="Piper voice model"),
+    length_scale: float = Query(1.0, ge=0.5, le=2.5),
+    noise_scale: float  = Query(0.667, ge=0.0, le=1.0),
+    noise_w: float      = Query(0.8, ge=0.0, le=1.0),
 ):
     if not text.strip():
         raise HTTPException(400, "text is empty")
 
-    voice = voice or EDGE_DEFAULT_VOICE
+    voice = voice or DEFAULT_VOICE
+    model_path = get_model_path(voice)
 
-    # Convert legacy speed/length_scale to Edge rate
-    if speed and speed != 1.0:
-        rate = f"{int((speed - 1.0) * 100):+d}%"
-    elif length_scale and length_scale != 1.0:
-        rate = f"{int((1.0/length_scale - 1.0) * 100):+d}%"
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        tmp_path = tmp.name
 
     try:
-        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
-        chunks = []
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                chunks.append(chunk["data"])
-        audio = b"".join(chunks)
+        result = subprocess.run(
+            [PIPER_BIN, "--model", model_path,
+             "--length_scale", f"{length_scale:.3f}",
+             "--noise_scale", f"{noise_scale:.3f}",
+             "--noise_w", f"{noise_w:.3f}",
+             "--output_file", tmp_path],
+            input=text.encode("utf-8"),
+            capture_output=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            raise HTTPException(500, f"Piper failed: {result.stderr.decode()[:300]}")
 
+        audio = Path(tmp_path).read_bytes()
         return StreamingResponse(
             io.BytesIO(audio),
-            media_type="audio/mpeg",
+            media_type="audio/wav",
             headers={
-                "Content-Disposition": "inline; filename=eve.mp3",
+                "Content-Disposition": "inline; filename=eve.wav",
                 "Content-Length": str(len(audio)),
                 "Cache-Control": "no-cache",
             },
         )
-    except Exception as e:
-        raise HTTPException(500, f"Edge TTS failed: {e}")
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 # ── STT ───────────────────────────────────────────────────────────────────────

@@ -414,82 +414,18 @@ async function chatWithEve(text) {
   return fullText;
 }
 
-// ── TTS (Web Speech API — uses device's native voices) ─────────────────────
-// Pre-load voices as soon as page loads
-let _cachedVoices = [];
-function _refreshVoices() { _cachedVoices = speechSynthesis.getVoices(); }
-_refreshVoices();
-if (speechSynthesis.onvoiceschanged !== undefined) {
-  speechSynthesis.onvoiceschanged = _refreshVoices;
-}
-
-function pickBestVoice() {
-  const voices = _cachedVoices.length > 0 ? _cachedVoices : speechSynthesis.getVoices();
-  if (voices.length === 0) return null;
-
-  // Prefer high-quality US female voices in this order
-  const preferences = [
-    /Samantha/i,            // iOS/macOS — excellent
-    /Ava/i,                 // iOS
-    /Allison/i,             // iOS
-    /Microsoft.*Aria/i,     // Windows
-    /Microsoft.*Jenny/i,    // Windows
-    /Google US English/i,   // Android/Chrome
-    /Karen/i,               // AU female, pleasant
-  ];
-  for (const pref of preferences) {
-    const match = voices.find(v => pref.test(v.name) && v.lang.startsWith('en'));
-    if (match) return match;
-  }
-  // Any English voice
-  return voices.find(v => v.lang.startsWith('en')) || voices[0];
-}
-
+// ── TTS (Piper on server) ────────────────────────────────────────────────────
 async function speak(text) {
-  if (!('speechSynthesis' in window)) throw new Error('Speech synthesis not supported');
-
-  // iOS fix: cancel any pending speech first
-  speechSynthesis.cancel();
-
+  const params = new URLSearchParams({ text, voice: 'en_US-lessac-medium' });
+  const res = await fetch(settings.voiceEndpoint + '/tts?' + params);
+  if (!res.ok) throw new Error('TTS error: ' + res.status);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voice = pickBestVoice();
-    if (voice) utterance.voice = voice;
-    utterance.lang = voice?.lang || 'en-US';
-    utterance.rate = 1.0;
-    utterance.pitch = 1.0;
-    utterance.onend = () => resolve();
-    utterance.onerror = (e) => {
-      // iOS sometimes fires 'interrupted' which isn't a real error
-      if (e.error === 'interrupted' || e.error === 'canceled') { resolve(); return; }
-      reject(new Error('Speech error: ' + e.error));
-    };
-
-    // iOS workaround: speech can silently fail if not triggered soon after user gesture.
-    // The PTT release IS a user gesture, so this should work.
-    // But we need to handle iOS 15+ bug where long texts get cut off:
-    if (text.length > 200) {
-      // Split into chunks for iOS which cuts off long utterances
-      const chunks = text.match(/[^.!?]+[.!?]+["')\]]?\s*|[^.!?]+$/g) || [text];
-      let i = 0;
-      function speakNext() {
-        if (i >= chunks.length) { resolve(); return; }
-        const u = new SpeechSynthesisUtterance(chunks[i].trim());
-        if (voice) u.voice = voice;
-        u.lang = voice?.lang || 'en-US';
-        u.rate = 1.0;
-        u.pitch = 1.0;
-        u.onend = () => { i++; speakNext(); };
-        u.onerror = (e) => {
-          if (e.error === 'interrupted' || e.error === 'canceled') { resolve(); return; }
-          reject(new Error('Speech error: ' + e.error));
-        };
-        speechSynthesis.speak(u);
-      }
-      speakNext();
-    } else {
-      speechSynthesis.speak(utterance);
-    }
+    const audio = new Audio(url);
+    audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+    audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Audio playback failed')); };
+    audio.play().catch(reject);
   });
 }
 
