@@ -9,16 +9,24 @@ RUN apt-get update && apt-get install -y \
     wget \
     libgomp1 \
     ffmpeg \
+    pkg-config \
+    libavformat-dev \
+    libavcodec-dev \
+    libavdevice-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
+    libavfilter-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # ── Python deps ────────────────────────────────────────────────────────────────
 RUN pip install --no-cache-dir \
-    fastapi==0.111.0 \
-    uvicorn[standard]==0.29.0 \
-    pydantic==2.7.0 \
-    faster-whisper==1.0.1
+    fastapi==0.135.3 \
+    uvicorn[standard]==0.43.0 \
+    pydantic==2.12.5 \
+    faster-whisper==1.2.1
 
 # ── Piper binary (Linux x86_64) ────────────────────────────────────────────────
 # Check https://github.com/rhasspy/piper/releases for latest version
