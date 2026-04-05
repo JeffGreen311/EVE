@@ -25,7 +25,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="Eve Voice Server", version="2.0.0")
@@ -154,6 +154,16 @@ async def transcribe(req: TranscribeRequest):
         raise HTTPException(500, str(e))
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+# ── Web App ──────────────────────────────────────────────────────────────────
+WEB_APP = Path(__file__).parent / "index.html"
+
+@app.get("/", response_class=HTMLResponse)
+def serve_web_app():
+    if WEB_APP.exists():
+        return HTMLResponse(WEB_APP.read_text())
+    return HTMLResponse("<h1>Eve Voice Server</h1><p>Web app not found.</p>")
 
 
 # ── Entry ─────────────────────────────────────────────────────────────────────

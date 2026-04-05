@@ -51,6 +51,7 @@ RUN mkdir -p /app/piper/models && \
 
 # ── Copy server ──────────────────────────────────────────────────────────────
 COPY piper_server/combined_server.py .
+COPY piper_server/index.html .
 
 # ── Env ──────────────────────────────────────────────────────────────────────
 ENV PIPER_BIN=/app/piper/piper
