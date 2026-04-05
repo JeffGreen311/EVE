@@ -41,7 +41,7 @@ WHISPER_MODEL_SZ  = os.getenv("WHISPER_MODEL", "base")
 # Kokoro TTS (Eve's primary voice — warm, natural US female)
 KOKORO_MODEL      = os.getenv("KOKORO_MODEL", "/app/kokoro/kokoro-v1.0.onnx")
 KOKORO_VOICES     = os.getenv("KOKORO_VOICES", "/app/kokoro/voices-v1.0.bin")
-KOKORO_DEFAULT    = os.getenv("KOKORO_DEFAULT_VOICE", "af_bella")
+KOKORO_DEFAULT    = os.getenv("KOKORO_DEFAULT_VOICE", "af_heart")
 
 # ── Load Whisper once ─────────────────────────────────────────────────────────
 print(f"[Eve Voice] Loading Whisper '{WHISPER_MODEL_SZ}'…")

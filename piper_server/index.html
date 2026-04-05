@@ -416,7 +416,7 @@ async function chatWithEve(text) {
 
 // ── TTS (Piper) ──────────────────────────────────────────────────────────────
 async function speak(text) {
-  const params = new URLSearchParams({ text, voice: 'af_bella', speed: '1.00' });
+  const params = new URLSearchParams({ text, voice: 'af_heart', speed: '1.00' });
   const res = await fetch(settings.voiceEndpoint + '/tts?' + params);
   if (!res.ok) throw new Error('TTS error: ' + res.status);
   const blob = await res.blob();
