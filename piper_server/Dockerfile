@@ -19,7 +19,9 @@ RUN pip install --no-cache-dir --prefix=/install \
     uvicorn[standard]==0.43.0 \
     pydantic==2.12.5 \
     faster-whisper==1.2.1 \
-    httpx==0.28.1
+    httpx==0.28.1 \
+    kokoro-onnx==0.4.9 \
+    soundfile==0.12.1
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim
@@ -50,6 +52,13 @@ RUN mkdir -p /app/piper/models && \
          -O /app/piper/models/en_US-lessac-medium.onnx && \
     wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" \
          -O /app/piper/models/en_US-lessac-medium.onnx.json
+
+# ── Download Kokoro TTS model ────────────────────────────────────────────────
+RUN mkdir -p /app/kokoro && \
+    wget -q "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx" \
+         -O /app/kokoro/kokoro-v1.0.onnx && \
+    wget -q "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin" \
+         -O /app/kokoro/voices-v1.0.bin
 
 # ── Copy server ──────────────────────────────────────────────────────────────
 COPY piper_server/combined_server.py .
