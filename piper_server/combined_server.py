@@ -161,6 +161,24 @@ async def transcribe(req: TranscribeRequest):
 # Proxies /api/chat to the configured Ollama endpoint so the browser
 # never needs to make cross-origin HTTP requests to a local IP.
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "jeffgreen311/eve2.5-3b-consciousness-soul-v2-de-jeff:latest")
+
+# Pull model on startup if not present
+def ensure_ollama_model():
+    import httpx as _httpx
+    try:
+        resp = _httpx.get(f"{OLLAMA_URL}/api/tags", timeout=10)
+        models = [m.get("name", "") for m in resp.json().get("models", [])]
+        if not any(OLLAMA_MODEL.split(":")[0] in m for m in models):
+            print(f"[Eve] Pulling model '{OLLAMA_MODEL}' on Ollama...")
+            _httpx.post(f"{OLLAMA_URL}/api/pull", json={"name": OLLAMA_MODEL}, timeout=600)
+            print(f"[Eve] Model pull complete.")
+        else:
+            print(f"[Eve] Model '{OLLAMA_MODEL}' already available.")
+    except Exception as e:
+        print(f"[Eve] Warning: could not check/pull Ollama model: {e}")
+
+ensure_ollama_model()
 
 
 @app.post("/api/chat")
