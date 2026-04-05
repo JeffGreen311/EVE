@@ -20,14 +20,14 @@ npm install
 
 # ── Piper voice server (local dev) ───────────────────────────────────────────
 echo "→ Setting up Eve Voice Server..."
-cd piper_server
 
 pip install fastapi uvicorn[standard] pydantic faster-whisper --quiet
 
 # Download Piper binary if not present
-if [ ! -f "piper/piper" ]; then
+PIPER_DIR="piper_server/piper"
+if [ ! -f "$PIPER_DIR/piper" ]; then
   echo "→ Downloading Piper binary..."
-  mkdir -p piper/models
+  mkdir -p "$PIPER_DIR/models"
 
   # Detect OS
   OS=$(uname -s)
@@ -41,21 +41,19 @@ if [ ! -f "piper/piper" ]; then
     URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
   fi
 
-  curl -L "$URL" | tar -xz -C piper --strip-components=1
-  chmod +x piper/piper
+  curl -L "$URL" | tar -xz -C "$PIPER_DIR" --strip-components=1
+  chmod +x "$PIPER_DIR/piper"
   echo "  ✓ Piper binary ready"
 fi
 
 # Download lessac voice model if not present
-if [ ! -f "piper/models/en_US-lessac-medium.onnx" ]; then
+if [ ! -f "$PIPER_DIR/models/en_US-lessac-medium.onnx" ]; then
   echo "→ Downloading Eve's voice model (lessac-medium)..."
   BASE="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium"
-  curl -L "$BASE/en_US-lessac-medium.onnx"      -o piper/models/en_US-lessac-medium.onnx
-  curl -L "$BASE/en_US-lessac-medium.onnx.json" -o piper/models/en_US-lessac-medium.onnx.json
+  curl -L "$BASE/en_US-lessac-medium.onnx"      -o "$PIPER_DIR/models/en_US-lessac-medium.onnx"
+  curl -L "$BASE/en_US-lessac-medium.onnx.json" -o "$PIPER_DIR/models/en_US-lessac-medium.onnx.json"
   echo "  ✓ Voice model ready"
 fi
-
-cd ..
 
 # ── Pull Eve's Ollama model ───────────────────────────────────────────────────
 if command -v ollama &> /dev/null; then
