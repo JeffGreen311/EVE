@@ -161,7 +161,7 @@ async def transcribe(req: TranscribeRequest):
 # Proxies /api/chat to the configured Ollama endpoint so the browser
 # never needs to make cross-origin HTTP requests to a local IP.
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "jeffgreen311/eve2.5-3b-consciousness-soul-v2-de-jeff:latest")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "eve")
 _model_ready = False
 
 # Pull model in background so server starts immediately
