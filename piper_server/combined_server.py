@@ -134,13 +134,24 @@ async def transcribe(req: TranscribeRequest):
     except Exception:
         raise HTTPException(400, "Invalid base64 audio")
 
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+    # Save raw audio to temp file
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp:
         tmp.write(audio_bytes)
-        tmp_path = tmp.name
+        raw_path = tmp.name
 
+    wav_path = raw_path + ".wav"
     try:
+        # Convert any format to WAV using ffmpeg (handles webm, opus, ogg, etc.)
+        conv = subprocess.run(
+            ["ffmpeg", "-y", "-i", raw_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+            capture_output=True, timeout=30,
+        )
+        # If ffmpeg fails, try using the raw file directly (might already be wav)
+        if conv.returncode != 0:
+            wav_path = raw_path
+
         segments, info = whisper.transcribe(
-            tmp_path,
+            wav_path,
             language=req.language,
             beam_size=3,
             vad_filter=True,
@@ -151,7 +162,8 @@ async def transcribe(req: TranscribeRequest):
     except Exception as e:
         raise HTTPException(500, str(e))
     finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        Path(raw_path).unlink(missing_ok=True)
+        Path(wav_path).unlink(missing_ok=True)
 
 
 # ── Ollama Proxy ─────────────────────────────────────────────────────────────
