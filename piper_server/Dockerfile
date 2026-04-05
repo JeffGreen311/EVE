@@ -39,7 +39,7 @@ RUN mkdir -p /app/piper/models && \
          -O /app/piper/models/en_US-lessac-medium.onnx.json
 
 # ── Copy server ────────────────────────────────────────────────────────────────
-COPY combined_server.py .
+COPY piper_server/combined_server.py .
 
 # ── Env ────────────────────────────────────────────────────────────────────────
 ENV PIPER_BIN=/app/piper/piper
