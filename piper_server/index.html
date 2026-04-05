@@ -414,44 +414,19 @@ async function chatWithEve(text) {
   return fullText;
 }
 
-// ── TTS (Kokoro) — sentence-by-sentence streaming playback ─────────────────
-async function ttsFetch(text) {
-  const params = new URLSearchParams({ text, voice: 'af_heart', speed: '1.00' });
+// ── TTS (Edge) ───────────────────────────────────────────────────────────────
+async function speak(text) {
+  const params = new URLSearchParams({ text, voice: 'en-US-JennyNeural' });
   const res = await fetch(settings.voiceEndpoint + '/tts?' + params);
   if (!res.ok) throw new Error('TTS error: ' + res.status);
   const blob = await res.blob();
-  return URL.createObjectURL(blob);
-}
-
-function playAudio(url) {
+  const url = URL.createObjectURL(blob);
   return new Promise((resolve, reject) => {
     const audio = new Audio(url);
     audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
     audio.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Audio playback failed')); };
     audio.play().catch(reject);
   });
-}
-
-function splitSentences(text) {
-  // Split on sentence boundaries but keep punctuation with the sentence
-  const parts = text.match(/[^.!?]+[.!?]+["')\]]?|[^.!?]+$/g) || [text];
-  return parts.map(s => s.trim()).filter(Boolean);
-}
-
-async function speak(text) {
-  const sentences = splitSentences(text);
-  if (sentences.length === 0) return;
-
-  // Prefetch first sentence, then pipeline: while one plays, next fetches
-  let nextUrlPromise = ttsFetch(sentences[0]);
-  for (let i = 0; i < sentences.length; i++) {
-    const url = await nextUrlPromise;
-    // Start fetching the next sentence immediately
-    if (i + 1 < sentences.length) {
-      nextUrlPromise = ttsFetch(sentences[i + 1]);
-    }
-    await playAudio(url);
-  }
 }
 
 // ── PTT flow ─────────────────────────────────────────────────────────────────

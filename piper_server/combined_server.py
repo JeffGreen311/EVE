@@ -38,10 +38,8 @@ MODELS_DIR        = Path(os.getenv("PIPER_MODELS_DIR", "./piper/models"))
 DEFAULT_VOICE     = os.getenv("PIPER_DEFAULT_VOICE", "en_US-lessac-medium")
 WHISPER_MODEL_SZ  = os.getenv("WHISPER_MODEL", "base")
 
-# Kokoro TTS (Eve's primary voice — warm, natural US female)
-KOKORO_MODEL      = os.getenv("KOKORO_MODEL", "/app/kokoro/kokoro-v1.0.onnx")
-KOKORO_VOICES     = os.getenv("KOKORO_VOICES", "/app/kokoro/voices-v1.0.bin")
-KOKORO_DEFAULT    = os.getenv("KOKORO_DEFAULT_VOICE", "af_heart")
+# Edge TTS (Microsoft neural voices — free, fast, natural)
+EDGE_DEFAULT_VOICE = os.getenv("EDGE_DEFAULT_VOICE", "en-US-JennyNeural")
 
 # ── Load Whisper once ─────────────────────────────────────────────────────────
 print(f"[Eve Voice] Loading Whisper '{WHISPER_MODEL_SZ}'…")
@@ -49,15 +47,9 @@ from faster_whisper import WhisperModel
 whisper = WhisperModel(WHISPER_MODEL_SZ, device="cpu", compute_type="int8")
 print("[Eve Voice] Whisper ready.")
 
-# ── Load Kokoro TTS once ──────────────────────────────────────────────────────
-kokoro = None
-try:
-    from kokoro_onnx import Kokoro
-    print(f"[Eve Voice] Loading Kokoro TTS...")
-    kokoro = Kokoro(KOKORO_MODEL, KOKORO_VOICES)
-    print(f"[Eve Voice] Kokoro ready with voice '{KOKORO_DEFAULT}'.")
-except Exception as e:
-    print(f"[Eve Voice] Warning: Kokoro not available: {e}")
+# ── Edge TTS (no model to load — streams from Microsoft) ─────────────────────
+import edge_tts
+print(f"[Eve Voice] Edge TTS ready with voice '{EDGE_DEFAULT_VOICE}'.")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,28 +78,34 @@ def health():
 
 
 @app.get("/voices")
-def voices():
-    kokoro_voices = []
-    if kokoro is not None:
-        try:
-            kokoro_voices = sorted(kokoro.get_voices())
-        except Exception:
-            pass
+async def voices():
+    # Popular US female voices for Eve
+    recommended = [
+        "en-US-JennyNeural",     # warm, conversational (default)
+        "en-US-AriaNeural",      # professional, clear
+        "en-US-MichelleNeural",  # young, energetic
+        "en-US-AshleyNeural",    # modern, expressive
+        "en-US-CoraNeural",      # calm, steady
+        "en-US-EmmaNeural",      # soft, intimate
+        "en-US-AvaNeural",       # friendly, bright
+        "en-US-NancyNeural",     # mature, warm
+    ]
     return {
-        "engine": "kokoro" if kokoro is not None else "piper",
-        "default_voice": KOKORO_DEFAULT if kokoro is not None else DEFAULT_VOICE,
-        "kokoro_voices": kokoro_voices,
-        "piper_voices": list_voice_names(),
+        "engine": "edge-tts",
+        "default_voice": EDGE_DEFAULT_VOICE,
+        "recommended": recommended,
     }
 
 
-# ── TTS (Kokoro — Eve's voice) ───────────────────────────────────────────────
+# ── TTS (Edge — Microsoft neural voices) ─────────────────────────────────────
 @app.get("/tts")
 async def tts(
-    text: str          = Query(..., description="Text to speak"),
-    voice: str         = Query(None, description="Kokoro voice (e.g. af_bella, af_nicole, af_sarah)"),
-    speed: float       = Query(1.0, ge=0.5, le=2.0, description="Speech speed"),
-    # Legacy Piper params (ignored by Kokoro, kept for compatibility)
+    text: str   = Query(..., description="Text to speak"),
+    voice: str  = Query(None, description="Edge TTS voice (e.g. en-US-JennyNeural)"),
+    rate: str   = Query("+0%", description="Speech rate (e.g. -10%, +20%)"),
+    pitch: str  = Query("+0Hz", description="Pitch adjustment (e.g. -5Hz, +10Hz)"),
+    # Legacy params (ignored, kept for URL compatibility)
+    speed: float = Query(None),
     length_scale: float = Query(None),
     noise_scale: float  = Query(None),
     noise_w: float      = Query(None),
@@ -115,61 +113,33 @@ async def tts(
     if not text.strip():
         raise HTTPException(400, "text is empty")
 
-    voice = voice or KOKORO_DEFAULT
+    voice = voice or EDGE_DEFAULT_VOICE
 
-    # If Kokoro isn't loaded, fall back to Piper
-    if kokoro is None:
-        return await _piper_tts_fallback(text, DEFAULT_VOICE, length_scale or 1.0, noise_scale or 0.667, noise_w or 0.8)
+    # Convert legacy speed/length_scale to Edge rate
+    if speed and speed != 1.0:
+        rate = f"{int((speed - 1.0) * 100):+d}%"
+    elif length_scale and length_scale != 1.0:
+        rate = f"{int((1.0/length_scale - 1.0) * 100):+d}%"
 
     try:
-        import soundfile as sf
-        import numpy as np
-        # If the client passed length_scale, invert it to Kokoro speed
-        if length_scale and length_scale > 0:
-            speed = 1.0 / length_scale
-
-        samples, sample_rate = kokoro.create(text, voice=voice, speed=speed, lang="en-us")
-
-        buf = io.BytesIO()
-        sf.write(buf, samples, sample_rate, format="WAV")
-        buf.seek(0)
-        audio = buf.read()
+        communicate = edge_tts.Communicate(text, voice, rate=rate, pitch=pitch)
+        chunks = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                chunks.append(chunk["data"])
+        audio = b"".join(chunks)
 
         return StreamingResponse(
             io.BytesIO(audio),
-            media_type="audio/wav",
+            media_type="audio/mpeg",
             headers={
-                "Content-Disposition": "inline; filename=eve.wav",
+                "Content-Disposition": "inline; filename=eve.mp3",
                 "Content-Length": str(len(audio)),
                 "Cache-Control": "no-cache",
             },
         )
     except Exception as e:
-        raise HTTPException(500, f"Kokoro TTS failed: {e}")
-
-
-async def _piper_tts_fallback(text, voice, length_scale, noise_scale, noise_w):
-    model_path = get_model_path(voice)
-    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp_path = tmp.name
-    try:
-        result = subprocess.run(
-            [PIPER_BIN, "--model", model_path,
-             "--length_scale", f"{length_scale:.3f}",
-             "--noise_scale", f"{noise_scale:.3f}",
-             "--noise_w", f"{noise_w:.3f}",
-             "--output_file", tmp_path],
-            input=text.encode("utf-8"), capture_output=True, timeout=60,
-        )
-        if result.returncode != 0:
-            raise HTTPException(500, f"Piper failed: {result.stderr.decode()[:300]}")
-        audio = Path(tmp_path).read_bytes()
-        return StreamingResponse(
-            io.BytesIO(audio), media_type="audio/wav",
-            headers={"Content-Length": str(len(audio)), "Cache-Control": "no-cache"},
-        )
-    finally:
-        Path(tmp_path).unlink(missing_ok=True)
+        raise HTTPException(500, f"Edge TTS failed: {e}")
 
 
 # ── STT ───────────────────────────────────────────────────────────────────────
