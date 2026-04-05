@@ -1,0 +1,9 @@
+node_modules/
+.expo/
+dist/
+*.tsbuildinfo
+__pycache__/
+*.pyc
+piper_server/piper/
+*.wav
+.env

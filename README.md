@@ -44,29 +44,48 @@ EVE is a React Native mobile app that lets you hold a button, speak naturally, a
 
 ## Setup
 
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/JeffGreen311/EVE.git
+cd EVE
+.\setup.ps1
+```
+
+### Mac / Linux (Bash)
+
 ```bash
 git clone https://github.com/JeffGreen311/EVE.git
 cd EVE
 bash setup.sh
 ```
 
-`setup.sh` handles everything:
-- npm install
-- Piper binary download
-- Voice model download (lessac-medium)
-- Whisper model cache
-- Ollama model pull + Modelfile creation
+### Prerequisites
 
-Then:
+- **Node.js** 18+ — https://nodejs.org
+- **Python** 3.10+ — https://python.org
+- **Ollama** (optional) — https://ollama.com
+
+Setup handles: npm install, Python deps, Piper binary, voice model download, and Ollama model pull.
+
+### Running
+
 ```bash
-# Terminal 1 — Voice server
+# Terminal 1 — Voice server (Mac/Linux)
 cd piper_server && python combined_server.py
 
-# Terminal 2 — React Native
+# Terminal 1 — Voice server (Windows — use Docker)
+cd piper_server
+docker build -t eve-voice .
+docker run -p 5050:5050 eve-voice
+
+# Terminal 2 — React Native app
 npx expo start
 ```
 
 Scan the QR with **Expo Go** on your phone.
+
+> **Windows note:** Piper has no native Windows binary. Use Docker for the voice server locally, or deploy `piper_server/` to Railway.
 
 ---
 
