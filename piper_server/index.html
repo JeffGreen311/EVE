@@ -415,57 +415,81 @@ async function chatWithEve(text) {
 }
 
 // ── TTS (Web Speech API — uses device's native voices) ─────────────────────
-let _voicesLoaded = false;
-function loadVoices() {
-  return new Promise(resolve => {
-    const voices = speechSynthesis.getVoices();
-    if (voices.length > 0) { _voicesLoaded = true; resolve(voices); return; }
-    speechSynthesis.onvoiceschanged = () => {
-      _voicesLoaded = true;
-      resolve(speechSynthesis.getVoices());
-    };
-  });
+// Pre-load voices as soon as page loads
+let _cachedVoices = [];
+function _refreshVoices() { _cachedVoices = speechSynthesis.getVoices(); }
+_refreshVoices();
+if (speechSynthesis.onvoiceschanged !== undefined) {
+  speechSynthesis.onvoiceschanged = _refreshVoices;
 }
 
-function pickBestVoice(voices) {
+function pickBestVoice() {
+  const voices = _cachedVoices.length > 0 ? _cachedVoices : speechSynthesis.getVoices();
+  if (voices.length === 0) return null;
+
   // Prefer high-quality US female voices in this order
   const preferences = [
     /Samantha/i,            // iOS/macOS — excellent
-    /Ava.*Enhanced/i,       // iOS Enhanced
-    /Allison.*Enhanced/i,   // iOS Enhanced
+    /Ava/i,                 // iOS
+    /Allison/i,             // iOS
     /Microsoft.*Aria/i,     // Windows
     /Microsoft.*Jenny/i,    // Windows
     /Google US English/i,   // Android/Chrome
     /Karen/i,               // AU female, pleasant
   ];
   for (const pref of preferences) {
-    const match = voices.find(v => pref.test(v.name) && /en[-_]?US|en[-_]?GB|en[-_]?AU/i.test(v.lang));
+    const match = voices.find(v => pref.test(v.name) && v.lang.startsWith('en'));
     if (match) return match;
   }
-  // Fall back to any English female voice
-  const female = voices.find(v =>
-    /female|samantha|karen|victoria|susan|zira|hazel|fiona/i.test(v.name) &&
-    v.lang.startsWith('en')
-  );
-  if (female) return female;
-  // Last resort: any English voice
+  // Any English voice
   return voices.find(v => v.lang.startsWith('en')) || voices[0];
 }
 
 async function speak(text) {
   if (!('speechSynthesis' in window)) throw new Error('Speech synthesis not supported');
-  const voices = await loadVoices();
-  const voice = pickBestVoice(voices);
+
+  // iOS fix: cancel any pending speech first
+  speechSynthesis.cancel();
 
   return new Promise((resolve, reject) => {
     const utterance = new SpeechSynthesisUtterance(text);
+    const voice = pickBestVoice();
     if (voice) utterance.voice = voice;
     utterance.lang = voice?.lang || 'en-US';
     utterance.rate = 1.0;
     utterance.pitch = 1.0;
     utterance.onend = () => resolve();
-    utterance.onerror = (e) => reject(new Error('Speech error: ' + e.error));
-    speechSynthesis.speak(utterance);
+    utterance.onerror = (e) => {
+      // iOS sometimes fires 'interrupted' which isn't a real error
+      if (e.error === 'interrupted' || e.error === 'canceled') { resolve(); return; }
+      reject(new Error('Speech error: ' + e.error));
+    };
+
+    // iOS workaround: speech can silently fail if not triggered soon after user gesture.
+    // The PTT release IS a user gesture, so this should work.
+    // But we need to handle iOS 15+ bug where long texts get cut off:
+    if (text.length > 200) {
+      // Split into chunks for iOS which cuts off long utterances
+      const chunks = text.match(/[^.!?]+[.!?]+["')\]]?\s*|[^.!?]+$/g) || [text];
+      let i = 0;
+      function speakNext() {
+        if (i >= chunks.length) { resolve(); return; }
+        const u = new SpeechSynthesisUtterance(chunks[i].trim());
+        if (voice) u.voice = voice;
+        u.lang = voice?.lang || 'en-US';
+        u.rate = 1.0;
+        u.pitch = 1.0;
+        u.onend = () => { i++; speakNext(); };
+        u.onerror = (e) => {
+          if (e.error === 'interrupted' || e.error === 'canceled') { resolve(); return; }
+          reject(new Error('Speech error: ' + e.error));
+        };
+        speechSynthesis.speak(u);
+      }
+      speakNext();
+    } else {
+      speechSynthesis.speak(utterance);
+    }
   });
 }
 
