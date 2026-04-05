@@ -1,35 +1,39 @@
 # Eve Voice Server — Railway Dockerfile
 # Piper TTS + Whisper STT in one container
+# Multi-stage build to keep image small
 
-FROM python:3.11-slim
+# ── Stage 1: Build ────────────────────────────────────────────────────────────
+FROM python:3.11-slim AS builder
 
-# System deps
 RUN apt-get update && apt-get install -y \
-    curl \
-    wget \
-    libgomp1 \
-    ffmpeg \
     pkg-config \
     libavformat-dev \
     libavcodec-dev \
-    libavdevice-dev \
     libavutil-dev \
-    libswscale-dev \
     libswresample-dev \
-    libavfilter-dev \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# ── Python deps ────────────────────────────────────────────────────────────────
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --prefix=/install \
     fastapi==0.135.3 \
     uvicorn[standard]==0.43.0 \
     pydantic==2.12.5 \
     faster-whisper==1.2.1
 
-# ── Piper binary (Linux x86_64) ────────────────────────────────────────────────
-# Check https://github.com/rhasspy/piper/releases for latest version
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y \
+    wget \
+    libgomp1 \
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy Python packages from builder
+COPY --from=builder /install /usr/local
+
+WORKDIR /app
+
+# ── Piper binary (Linux x86_64) ──────────────────────────────────────────────
 ENV PIPER_VERSION=2023.11.14-2
 RUN mkdir -p /app/piper && \
     wget -q "https://github.com/rhasspy/piper/releases/download/${PIPER_VERSION}/piper_linux_x86_64.tar.gz" \
@@ -38,25 +42,24 @@ RUN mkdir -p /app/piper && \
     rm /tmp/piper.tar.gz && \
     chmod +x /app/piper/piper
 
-# ── Download Piper voice model ─────────────────────────────────────────────────
-# lessac-medium: natural, warm, suits Eve well
+# ── Download Piper voice model ───────────────────────────────────────────────
 RUN mkdir -p /app/piper/models && \
     wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx" \
          -O /app/piper/models/en_US-lessac-medium.onnx && \
     wget -q "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json" \
          -O /app/piper/models/en_US-lessac-medium.onnx.json
 
-# ── Copy server ────────────────────────────────────────────────────────────────
+# ── Copy server ──────────────────────────────────────────────────────────────
 COPY piper_server/combined_server.py .
 
-# ── Env ────────────────────────────────────────────────────────────────────────
+# ── Env ──────────────────────────────────────────────────────────────────────
 ENV PIPER_BIN=/app/piper/piper
 ENV PIPER_MODELS_DIR=/app/piper/models
 ENV PIPER_DEFAULT_VOICE=en_US-lessac-medium
-ENV WHISPER_MODEL=base
+ENV WHISPER_MODEL=tiny
 
-# Whisper pre-downloads its model on first run — cache it at build time
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+# Pre-download Whisper model at build time (tiny = 75MB vs base = 150MB)
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
 
 EXPOSE 5050
 
