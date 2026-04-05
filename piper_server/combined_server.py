@@ -23,7 +23,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+import httpx
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, HTMLResponse
 from pydantic import BaseModel
@@ -154,6 +155,48 @@ async def transcribe(req: TranscribeRequest):
         raise HTTPException(500, str(e))
     finally:
         Path(tmp_path).unlink(missing_ok=True)
+
+
+# ── Ollama Proxy ─────────────────────────────────────────────────────────────
+# Proxies /api/chat to the configured Ollama endpoint so the browser
+# never needs to make cross-origin HTTP requests to a local IP.
+OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
+
+
+@app.post("/api/chat")
+async def proxy_ollama_chat(request: Request):
+    body = await request.body()
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                f"{OLLAMA_URL}/api/chat",
+                content=body,
+                headers={"Content-Type": "application/json"},
+            )
+            # Stream the response back
+            return StreamingResponse(
+                io.BytesIO(resp.content),
+                status_code=resp.status_code,
+                media_type=resp.headers.get("content-type", "application/json"),
+            )
+    except httpx.ConnectError:
+        raise HTTPException(502, f"Cannot reach Ollama at {OLLAMA_URL}")
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/tags")
+async def proxy_ollama_tags():
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+            return StreamingResponse(
+                io.BytesIO(resp.content),
+                status_code=resp.status_code,
+                media_type="application/json",
+            )
+    except httpx.ConnectError:
+        raise HTTPException(502, f"Cannot reach Ollama at {OLLAMA_URL}")
 
 
 # ── Web App ──────────────────────────────────────────────────────────────────

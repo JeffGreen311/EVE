@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir --prefix=/install \
     fastapi==0.135.3 \
     uvicorn[standard]==0.43.0 \
     pydantic==2.12.5 \
-    faster-whisper==1.2.1
+    faster-whisper==1.2.1 \
+    httpx==0.28.1
 
 # ── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim
